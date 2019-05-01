@@ -30,88 +30,91 @@ float deg_to_cm(float degLeft, float degRight);
 
 task main()
 {
-		//This part recalibrates the gyro sensor
-		getGyroRate(gyroSensor);
-		getGyroDegrees(gyroSensor);
-		sleep(100);
+	//This part recalibrates the gyro sensor
+	getGyroRate(gyroSensor);
+	getGyroDegrees(gyroSensor);
+	sleep(100);
 
+	while(getTouchValue(touchSensor)==0)
+	{
+		if(getUSDistance(sonarSensor) > sonarDist) //Line Follower PID
+		{
+			lightValue = getColorReflected(colorSensor);
+			if(lightValue!=0) //If =0, it's crossing the trench, break from line follower
+			{
+				error = lightValue - setPoint;
+				integral = integral + error;
+				derivative = error - lastError;
+				turn = Kp*error + Ki*integral + Kd*derivative;
+				speedLeft = speedMotor + turn;
+				speedRight = speedMotor - turn;
+				setMotorSpeed(leftMotor,speedLeft);
+				setMotorSpeed(rightMotor,speedRight);
+				lastError = error;
+			}
+			
+			else
+				break;
+		}
+		
+		else //Wall Follower PID and Shooter
+		{
+			if(shootCount<3 && getColorName(colorSensor)==5) //need shootCount here to help with special tuning later, if not light sensor keeps switching modes
+			{
+				if(shootCount==0)
+					shootAndReturn(90);
+				else if (shootCount==1)
+					shootAndReturn(80);
+				else if (shootCount==2)
+				{
+					shootAndReturn(45);
+					resetMotorEncoder(leftMotor);
+					resetMotorEncoder(rightMotor);
+					distTrav=0;
+				}
+			}
+
+			else if(shootCount==3 && distTrav>30) //special tuning zone, 30cm after last red target
+			{
+				lightValue = getColorReflected(colorSensor);
+				error = lightValue - setPoint;
+				turn = Kp_Adjust*error;
+				speedLeft = speedMotorAdjust + turn;
+				speedRight = speedMotorAdjust - turn;
+				setMotorSpeed(leftMotor,speedLeft);
+				setMotorSpeed(rightMotor,speedRight);
+				setLEDColor(ledRedFlash);
+			}
+
+			else //just follow the wall
+			{
+				sonarValue = getUSDistance(sonarSensor);
+				error_Sonar = sonarValue - setPoint_Sonar;
+				speedLeft = speedMotorWall + Kp_Sonar*error_Sonar; //+ Kd_Sonar*derivative_Sonar;
+				speedRight = speedMotorWall - Kp_Sonar*error_Sonar; //- Kd_Sonar*derivative_Sonar;
+				setMotorSpeed(leftMotor,speedLeft);
+				setMotorSpeed(rightMotor,speedRight);
+				setLEDColor(ledOrangeFlash);
+				distTrav = deg_to_cm(getMotorEncoder(leftMotor), getMotorEncoder(rightMotor));
+			}
+		}
+	}
+
+	if(lightValue==0) //once break from line follower, just go straight
+	{
 		while(getTouchValue(touchSensor)==0)
 		{
-				if(getUSDistance(sonarSensor) > sonarDist) //Line Follower PID
-				{
-						lightValue = getColorReflected(colorSensor);
-						if(lightValue!=0) //If =0, it's crossing the trench, break from line follower
-						{
-								error = lightValue - setPoint;
-								integral = integral + error;
-								derivative = error - lastError;
-								turn = Kp*error + Ki*integral + Kd*derivative;
-								speedLeft = speedMotor + turn;
-								speedRight = speedMotor - turn;
-								setMotorSpeed(leftMotor,speedLeft);
-								setMotorSpeed(rightMotor,speedRight);
-								lastError = error;
-						}
-						else
-								break;
-				}
-				else //Wall Follower PID and Shooter
-				{
-						if(shootCount<3 && getColorName(colorSensor)==5) //need shootCount here to help with special tuning later, if not light sensor keeps switching modes
-						{
-								if(shootCount==0)
-									shootAndReturn(90);
-								else if (shootCount==1)
-									shootAndReturn(80);
-								else if (shootCount==2)
-								{
-										shootAndReturn(45);
-										resetMotorEncoder(leftMotor);
-										resetMotorEncoder(rightMotor);
-										distTrav=0;
-								}
-						}
-
-						else if(shootCount==3 && distTrav>30) //special tuning zone, 30cm after last red target
-						{
-								lightValue = getColorReflected(colorSensor);
-								error = lightValue - setPoint;
-								turn = Kp_Adjust*error;
-								speedLeft = speedMotorAdjust + turn;
-								speedRight = speedMotorAdjust - turn;
-								setMotorSpeed(leftMotor,speedLeft);
-								setMotorSpeed(rightMotor,speedRight);
-								setLEDColor(ledRedFlash);
-						}
-
-						else //just follow the wall
-						{
-								sonarValue = getUSDistance(sonarSensor);
-								error_Sonar = sonarValue - setPoint_Sonar;
-								speedLeft = speedMotorWall + Kp_Sonar*error_Sonar; //+ Kd_Sonar*derivative_Sonar;
-								speedRight = speedMotorWall - Kp_Sonar*error_Sonar; //- Kd_Sonar*derivative_Sonar;
-								setMotorSpeed(leftMotor,speedLeft);
-								setMotorSpeed(rightMotor,speedRight);
-								setLEDColor(ledOrangeFlash);
-								distTrav = deg_to_cm(getMotorEncoder(leftMotor), getMotorEncoder(rightMotor));
-						}
-				}
+			setMotorSpeed(leftMotor,speedMotor);
+			setMotorSpeed(rightMotor,speedMotor);
+			setLEDColor(ledRed);
+			setLEDColor(ledGreen);
 		}
-
-		if(lightValue==0) //once break from line follower, just go straight
-		{
-						while(getTouchValue(touchSensor)==0)
-						{
-								setMotorSpeed(leftMotor,speedMotor);
-								setMotorSpeed(rightMotor,speedMotor);
-								setLEDColor(ledRed);
-								setLEDColor(ledGreen);
-						}
-		}
-		setMotorSpeed(leftMotor,0);
-		setMotorSpeed(rightMotor,0);
-		displayBigTextLine(1, "SUCCESS!!!");
-		delay(30000);
+	}
+	
+	setMotorSpeed(leftMotor,0);
+	setMotorSpeed(rightMotor,0);
+	displayBigTextLine(1, "SUCCESS!!!");
+	delay(30000);
 
 }
 
@@ -119,54 +122,55 @@ task main()
 
 void shootAndReturn(int degAngle)
 {
-		setMotorSpeed(leftMotor,0);
-		setMotorSpeed(rightMotor,0);
-		resetGyro(gyroSensor);
+	setMotorSpeed(leftMotor,0);
+	setMotorSpeed(rightMotor,0);
+	resetGyro(gyroSensor);
 
-		//turn and face target
-		while(getGyroDegrees(gyroSensor)>(-degAngle))
-		{
-				setMotorSpeed(leftMotor,-5);
-				setMotorSpeed(rightMotor,5);
-		}
-		setMotorSpeed(leftMotor,0);
-		setMotorSpeed(rightMotor,0);
+	//turn and face target
+	while(getGyroDegrees(gyroSensor)>(-degAngle))
+	{
+		setMotorSpeed(leftMotor,-5);
+		setMotorSpeed(rightMotor,5);
+	}
+	
+	setMotorSpeed(leftMotor,0);
+	setMotorSpeed(rightMotor,0);
 
-		//shoot at target!
-		moveMotorTarget(armMotor,1080,20);	//36:12 gear ratio reductions, so 3*360=1080
-		waitUntilMotorStop(armMotor);
+	//shoot at target!
+	moveMotorTarget(armMotor,1080,20);	//36:12 gear ratio reductions, so 3*360=1080
+	waitUntilMotorStop(armMotor);
 
-		//turn back to original pose
-		resetGyro(gyroSensor);
-		while(getGyroDegrees(gyroSensor)<degAngle)
-		{
-				setMotorSpeed(leftMotor,5);
-				setMotorSpeed(rightMotor,-5);
-		}
+	//turn back to original pose
+	resetGyro(gyroSensor);
+	while(getGyroDegrees(gyroSensor)<degAngle)
+	{
+		setMotorSpeed(leftMotor,5);
+		setMotorSpeed(rightMotor,-5);
+	}
 
-		//about 60deg is needed to move 20mm forward to clear the red target
-		moveMotorTarget(leftMotor,90,speedMotorWall);
-		moveMotorTarget(rightMotor,90,speedMotorWall);
-		waitUntilMotorStop(leftMotor);
-		waitUntilMotorStop(rightMotor);
-		shootCount++;
+	//about 60deg is needed to move 20mm forward to clear the red target
+	moveMotorTarget(leftMotor,90,speedMotorWall);
+	moveMotorTarget(rightMotor,90,speedMotorWall);
+	waitUntilMotorStop(leftMotor);
+	waitUntilMotorStop(rightMotor);
+	shootCount++;
 }
 
 float deg_to_cm(float degLeft, float degRight)
 {
-		float degAvg;
-		degAvg = (degLeft + degRight)/2;
-		distTrav = degAvg/360*3.14*4.8;	// track outer diameter is 4.8cm
-		return distTrav;
+	float degAvg;
+	degAvg = (degLeft + degRight)/2;
+	distTrav = degAvg/360*3.14*4.8;	// track outer diameter is 4.8cm
+	return distTrav;
 }
 
 /* Color Sensor IDs
-		0 = No Color
-		1 = Black
-		2 = Blue
-		3 = Green
-		4 = Yellow
-		5 = Red
-		6 = White
-		7 = Brown
+	0 = No Color
+	1 = Black
+	2 = Blue
+	3 = Green
+	4 = Yellow
+	5 = Red
+	6 = White
+	7 = Brown
 */
